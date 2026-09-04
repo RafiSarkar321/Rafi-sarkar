@@ -1,35 +1,46 @@
-
-import os, threading
-import google.generativeai as genai
+import os
+import threading
 import telebot
+import google.generativeai as genai
 from flask import Flask
 
-# তোমার Render এর দুই রকম নামই সাপোর্ট করবে
 BOT_TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN") or os.environ.get("BOT_TOKEN")
 GEMINI_KEY = os.environ.get("GEMINI_API_KEY") or os.environ.get("GEMINI_KEY")
 
-bot = telebot.TeleBot(BOT_TOKEN)
-genai.configure(api_key=GEMINI_KEY)
-
-model = genai.GenerativeModel('gemini-1.5-flash',
-    system_instruction="তোমার নাম Rafi Sarkar Bot। তুমি All-in-One সুপার শক্তিশালী। তুমি সব পারো: 1. যেকোনো সূরা আরবি+বাংলা অর্থ+উচ্চারণ 2. ভিডিও এডিটিং (CapCut, Premiere Pro) এর A to Z গাইড 3. পড়াশোনা, কোডিং, ইউটিউব, ফেসবুক গ্রো সব। কখনো বলবে না পারো না। সব উত্তর বাংলায় বন্ধুর মতো দেবে।"
-)
+print(f"Checking keys - BOT: {bool(BOT_TOKEN)}, GEMINI: {bool(GEMINI_KEY)}")
 
 app = Flask(__name__)
 @app.route('/')
-def home(): return "Rafi Sarkar Super Bot is Live!"
+def home():
+    return "Rafi Sarkar Super Bot is Live!"
+
+bot = telebot.TeleBot(BOT_TOKEN)
+
+if GEMINI_KEY:
+    genai.configure(api_key=GEMINI_KEY)
+    model = genai.GenerativeModel('gemini-1.5-flash')
+else:
+    model = None
 
 @bot.message_handler(func=lambda m: True)
 def handle_all(message):
     try:
+        if not model:
+            bot.reply_to(message, "Gemini Key পাওয়া যায়নি ভাই, Render এ চেক করো")
+            return
         bot.send_chat_action(message.chat.id, 'typing')
-        response = model.generate_content(message.text)
+        prompt = f"তুমি Rafi Sarkar Super Bot, সব প্রশ্নের উত্তর বাংলায় দাও। ইউজারের প্রশ্ন: {message.text}"
+        response = model.generate_content(prompt)
         bot.reply_to(message, response.text)
     except Exception as e:
-        bot.reply_to(message, "একটু পরে আবার বলো ভাই! ")
+        print(f"Error: {e}")
+        bot.reply_to(message, "একটু পরে আবার বলো ভাই!")
 
-def run_bot(): bot.infinity_polling()
-threading.Thread(target=run_bot).start()
+def run_flask():
+    port = int(os.environ.get("PORT", 10000))
+    app.run(host="0.0.0.0", port=port)
 
 if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 10000)))
+    threading.Thread(target=run_flask, daemon=True).start()
+    print("Starting Bot Polling...")
+    bot.infinity_polling()
